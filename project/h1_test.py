@@ -128,7 +128,6 @@ class TrajectoryNode(Node):
             self.future.set_result("Trajectory has ended")
             return
         
-
         t = fmod(self.t, 8.0)
         if   (t < 4.0):
             (s0,s0dot)=goto(t,4.0,0.0,1.0)
