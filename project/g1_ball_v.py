@@ -1,9 +1,6 @@
-'''h1_ball.py
+'''g1_ball_v.py
 
-   Move the H1 left arm and publish a fixed ball marker in RVIZ.
-
-   - Publishes joint states for the H1 left arm.
-   - Publishes a red ball as a MarkerArray on /visualization_marker_array.
+   Move the ball periodically between the 
 
 '''
 
@@ -47,45 +44,67 @@ class TrajectoryNode(Node):
         super().__init__(name)
         self.future = future
 
+        super().__init__(name)
+        self.future = future
+
         # Active joints along the left arm, from torso_link to the hand
         self.jointnames = [
-            "torso_joint",
             "left_shoulder_pitch_joint",
             "left_shoulder_roll_joint",
             "left_shoulder_yaw_joint",
             "left_elbow_joint",
-            "left_hand_joint",
+            "left_wrist_roll_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_yaw_joint",
         ]
 
         # Set up the kinematic chain object. 
         self.chain = KinematicChain(
             self,
-            "pelvis",        # baseframe (link name)
-            "L_hand_base_link",  # tipframe  (link name)
+            "waist_yaw_link",        # baseframe (link name)
+            "left_rubber_hand",  # tipframe  (link name)
             self.jointnames,     # expected active joint names
         )
+        #self.elbowchain=KinematicChain(self,'world','elbow',self.jointnames[0:4])
+        #self.wristchain=KinematicChain(self,'world','wrist',self.jointnames[0:5])
 
+
+        
         # Initial joint pose and tip pose
         self.q0 = np.radians(np.zeros(len(self.jointnames)))
         (p0, R0, Jv0, Jw0) = self.chain.fkin(self.q0)
         self.p0 = p0
         self.R0 = R0
+        self.q0dot=np.zeros(len(self.jointnames))
 
         # Goal joint pose and tip pose
         # Ball + hit pose definition
         self.ball_radius = 0.03
-        self.p_ball = np.array([0.5, 0.4, 0.3])
-        R_ball = Reye()
-        x_ball = np.array([1.0, 0.0, 0.0])
+        self.p_ball = np.array([0.1, 0.3, 0.15])
+        x_ball = np.array([1.0,0.0,0.0])
+        # the prehit position
+        self.ppre=self.p_ball - 7*self.ball_radius * x_ball
+        self.Rpre=Rotz(pi/2)
+        self.qpre=self.solve_ik(self.q0, self.ppre, 0, pi/2)
+        # Command to hit the ball at the back
         self.pg = self.p_ball - self.ball_radius * x_ball
-        self.Rg = Rotz(pi)
-        # self.p_hit = self.p_ball + self.ball_radius * z_ball
-        # self.R_hit = R_ball @ Rotx(pi)
+        self.Rg = Rotz(pi/2)
+        self.qg = self.solve_ik(self.qpre, self.pg, pi/2, pi/2)
 
-        self.qg = self.solve_ik()
-        (pg, Rg, Jvg, Jwg) = self.chain.fkin(self.qg)
-        self.pg = pg
-        self.Rg = Rg
+
+        
+        # want the hand to move in the +X
+
+        # self.qg = self.solve_ik(self.pg, self.Rg)
+        # (pg, Rg, Jvg, Jwg) = self.chain.fkin(self.qg)
+        # self.qgdot=np.zeros(len(self.jointnames))
+        # self.vg=np.array([0.1, 0.0, 0.0])
+        # self.wg=np.array([0.0,0.0,0.0])
+        # self.xdot=np.concatenate((self.vg,self.wg))
+        # Jq=np.vstack((Jvg,Jwg))
+        # self.qgdot=np.linalg.pinv(Jq)@self.xdot
+        #self.qgdot=np.zeros(len(self.jointnames))
+
 
         # Period T = 8 s (4s out, 4s back)
         self.T = 8.0
@@ -105,7 +124,7 @@ class TrajectoryNode(Node):
 
         # Create the marker once
         self.ball_marker = Marker()
-        self.ball_marker.header.frame_id  = "pelvis"
+        self.ball_marker.header.frame_id  = "waist_yaw_link"
         self.ball_marker.header.stamp     = self.get_clock().now().to_msg()
         self.ball_marker.action           = Marker.ADD
         self.ball_marker.ns               = "ball"
@@ -114,7 +133,7 @@ class TrajectoryNode(Node):
 
         self.ball_marker.pose.orientation = Quaternion(x=0.0, y=0.0,
                                                        z=0.0, w=1.0)
-        self.ball_marker.pose.position    = Point(x=0.5, y=0.4, z=0.3)
+        self.ball_marker.pose.position    = Point(x=0.1, y=0.3, z=0.15)
 
         self.ball_marker.scale            = Vector3(x=diam, y=diam, z=diam)
         self.ball_marker.color            = ColorRGBA(r=1.0, g=0.0,
@@ -146,9 +165,9 @@ class TrajectoryNode(Node):
         self.get_logger().info("Running with dt of %f seconds (%fHz)" %
                                (self.dt, 1/self.dt))
 
-    def solve_ik(self):
+    def solve_ik(self, q0, pg, a0, ag):
         """
-        Closed-whloop inverse kinematics via numerical integration
+        Closed-loop inverse kinematics via numerical integration
         along a C^1 cubic spline path in SE(3).
 
         - Position: spline from p0 to p_hit with v(0) = v(T) = 0.
@@ -167,7 +186,7 @@ class TrajectoryNode(Node):
         N  = int(T / dt)         # number of integration steps
 
         # Initial joint configuration and pose
-        q_c = self.q0.copy()
+        q_c = q0.copy()
         p0, R0, _, _ = self.chain.fkin(q_c)
         self.get_logger().info(
             f"solve_ik started, initial position = {p0}"
@@ -175,12 +194,6 @@ class TrajectoryNode(Node):
         self.get_logger().info(
             f"initial orientation = {R0}"
         )
-
-
-
-        # Goal pose (for hitting the ball)
-        p_goal = self.pg
-        R_goal = self.Rg
 
         # ---------------------------------------------------------
         # 2) Closed-loop IK integration along the spline path
@@ -190,23 +203,23 @@ class TrajectoryNode(Node):
             if t > T:
                 t = T
 
-
-             # --- Desired position + linear velocity (C^1 spline) ---
+            # --- Desired position + linear velocity (C^1 spline) ---
             # v(0) = v(T) = 0
             v0 = np.zeros(3)
             vf = np.zeros(3)
-            p_d, v_d = spline(t, T, p0, p_goal, v0, vf)
-            ad, addot=spline(t,T,pi/2,pi,0.0,0.0)
+            p_d, v_d = spline(t, T, p0, pg, v0, vf)
+            ad, addot= spline(t,T,a0,ag,0,0)
             R_d=Rotz(ad)
             w_d=nz()*addot
             # --- Actual pose and Jacobian at current q_c ---
             p_c, R_c, Jv, Jw = self.chain.fkin(q_c)
             Jq = np.vstack((Jv, Jw))
-            p_c, R_c, Jv, Jw = self.chain.fkin(q_c)
-            Jq = np.vstack((Jv, Jw))
 
             # Pseudo-inverse of the full Jacobian
-            Jinv = np.linalg.pinv(Jq)
+            lam = 0.1
+            Jdinv = Jq.T @ np.linalg.inv(Jq @ Jq.T + lam**2 * np.eye(6))
+
+            #Jinv = np.linalg.pinv(Jq)
 
             # Closed-loop task-space reference
             vref = v_d + lp * ep(p_d, p_c)
@@ -214,14 +227,17 @@ class TrajectoryNode(Node):
             xref = np.concatenate((vref, wref))
 
             # Integrate in joint space
-            qdot = Jinv @ xref
+            qdot = Jdinv @ xref
             q_c  = q_c + dt * qdot
 
         # Final pose for logging
         p_final, R_final, _, _ = self.chain.fkin(q_c)
-        pos_err = np.linalg.norm(p_goal - p_final)
+        pos_err = np.linalg.norm(pg - p_final)
         self.get_logger().info(
             f"solve_ik finished, final position error = {pos_err:.3e}"
+        )
+        self.get_logger().info(
+            f"final position = {p_final}"
         )
         self.get_logger().info(
             f"final orientation = {R_final}"
@@ -245,20 +261,22 @@ class TrajectoryNode(Node):
         self.now = self.now + rclpy.time.Duration(seconds=self.dt)
 
         # Stop after 40s (arbitrary).
-        if self.t > 40.0:
+        if self.t > 16.0:
             self.future.set_result("Trajectory has ended")
             return
 
         # Simple joint-space trapezoid between q0 and qg.
         t = fmod(self.t, 8.0)
-        if t < 4.0:
-            (s0, s0dot) = goto(t, 4.0, 0.0, 1.0)
-            qd    = self.q0 + (self.qg - self.q0) * s0
-            qddot = (self.qg - self.q0) * s0dot
+        if   (t < 4.0):
+            #qd,qddot=spline(t,4.0,self.q0,self.qg,self.q0dot, self.qgdot, 0, 0)
+            qd,qddot=goto(t,4.0,self.q0,self.qpre)
         else:
-            (s0, s0dot) = goto(t - 4.0, 4.0, 0.0, 1.0)
-            qd    = self.qg + (self.q0 - self.qg) * s0
-            qddot = (self.q0 - self.qg) * s0dot
+            tt=t-4.0
+            s=cos(2*pi*tt/8)
+            sdot=-2*pi/8*sin(2*pi*tt/8)
+            qd=1/2*(self.q0+self.qpre-2*self.qg)*s**2+1/2*(self.qpre-self.q0)*s+self.qg
+            qddot=(self.q0+self.qpre-2*self.qg)*s*sdot+1/2*(self.qpre-self.q0)*sdot
+            #qd, qddot=spline5(t-4.0,4.0, self.qg, self.q0, self.qgdot, self.q0dot, 0, 0)
 
         qc    = qd
         qcdot = qddot
@@ -267,11 +285,26 @@ class TrajectoryNode(Node):
         (pd, Rd, Jv, Jw) = self.chain.fkin(qc)
         vd = Jv @ qcdot
         wd = Jw @ qcdot
+        if 5.98<self.t<6.02:
+            self.get_logger().info(
+            f"time is = {self.t}"
+        )
+
+            self.get_logger().info(
+            f"velocity when hitting ball is = {vd}"
+        )
+
+            err=np.linalg.norm(self.pg-pd)
+            self.get_logger().info(
+            f"distance from hitting position is  = {err}"
+        )
+
+
 
         # ------------------------------------------
         # Publish joint, pose, twist, TF as before
         # ------------------------------------------
-        header = Header(stamp=self.now.to_msg(), frame_id='pelvis')
+        header = Header(stamp=self.now.to_msg(), frame_id='waist_yaw_link')
 
         self.pubjoint.publish(JointState(
             header=header,

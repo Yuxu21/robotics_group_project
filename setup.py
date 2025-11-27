@@ -32,7 +32,12 @@ setup(
             'h1_test = project.h1_test:main',
             'h1_ball = project.h1_ball:main',
             'balldemo = project.balldemo:main',
-            'h1_ball_hit=project.h1_ball_hit:main',
+            'h1_ball_hit = project.h1_ball_hit:main',
+            'g1_test = project.g1_test:main',
+            'g1_ball_hit = project.g1_ball_hit:main',
+            'g1_test_v = project.g1_test_v:main',
+            'g1_test_p= project.g1_test_p:main',
+            'g1_ball_v = project.g1_ball_v:main',
         ],
     },
 )

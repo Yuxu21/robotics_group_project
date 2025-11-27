@@ -52,14 +52,16 @@ class TrajectoryNode(Node):
             "left_shoulder_roll_joint",
             "left_shoulder_yaw_joint",
             "left_elbow_joint",
-            "left_hand_joint",
+            "left_wrist_roll_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_yaw_joint",
         ]
 
         # Set up the kinematic chain object. 
         self.chain = KinematicChain(
             self,
-            "torso_link",        # baseframe (link name)
-            "L_hand_base_link",  # tipframe  (link name)
+            "waist_yaw_link",        # baseframe (link name)
+            "left_rubber_hand",  # tipframe  (link name)
             self.jointnames,     # expected active joint names
         )
         #self.elbowchain=KinematicChain(self,'world','elbow',self.jointnames[0:4])
@@ -75,7 +77,7 @@ class TrajectoryNode(Node):
         self.p0 = p0
         self.R0 = R0
 
-        self.qg=np.radians(np.array([-pi/2,pi/4,pi,pi/4,0]))
+        self.qg=np.array([-pi/2,pi/4,pi,pi/4,pi/4, 0, 0])
         (pg,Rg,Jvg,Jwg)=self.chain.fkin(self.qg)
         self.pg=pg
         self.Rg=Rg
@@ -124,11 +126,10 @@ class TrajectoryNode(Node):
         self.t   = self.t   + self.dt
         self.now = self.now + rclpy.time.Duration(seconds=self.dt)
         # Stop everything after 8s - makes the graphing nicer.
-        if self.t > 16.0:
+        if self.t > 40.0:
             self.future.set_result("Trajectory has ended")
             return
         
-
         t = fmod(self.t, 8.0)
         if   (t < 4.0):
             (s0,s0dot)=goto(t,4.0,0.0,1.0)
@@ -200,7 +201,7 @@ class TrajectoryNode(Node):
         #  qc and qcdot = Joint Commands  as  /joint_states  to view/plot
         #  pd and Rd    = Task pos/orient as  /pose & TF     to view/plot
         #  vd and wd    = Task velocities as  /twist         to      plot
-        header=Header(stamp=self.now.to_msg(), frame_id='world')
+        header=Header(stamp=self.now.to_msg(), frame_id='torso_link')
         self.pubjoint.publish(JointState(
             header=header,
             name=self.jointnames,

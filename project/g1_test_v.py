@@ -1,3 +1,10 @@
+'''hw7p2.py
+
+   This is a placeholder and skeleton code for HW7 Problem 2.
+
+   Insert your HW7 P1 code and edit for this problem!
+
+'''
 import rclpy
 import numpy as np
 import tf2_ros
@@ -15,13 +22,8 @@ from std_msgs.msg       import Header
 from utils.TransformHelpers     import *
 from utils.TrajectoryUtils      import *
 # Import the format for the condition number message
-from rclpy.qos                  import QoSProfile, DurabilityPolicy
-from rclpy.time                 import Duration
-from geometry_msgs.msg          import Point, Vector3, Quaternion
 from std_msgs.msg import Float64
-from visualization_msgs.msg     import Marker
-from visualization_msgs.msg     import MarkerArray
-from std_msgs.msg               import ColorRGBA
+
 # Grab the general fkin from HW5 P5.
 from hw5code.KinematicChain     import KinematicChain
 # Grab the repulsion torque function
@@ -50,51 +52,23 @@ class TrajectoryNode(Node):
             "left_shoulder_roll_joint",
             "left_shoulder_yaw_joint",
             "left_elbow_joint",
-            "left_hand_joint",
+            "left_wrist_roll_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_yaw_joint",
         ]
 
         # Set up the kinematic chain object. 
         self.chain = KinematicChain(
             self,
-            "torso_link",        # baseframe (link name)
-            "L_hand_base_link",  # tipframe  (link name)
+            "waist_yaw_link",        # baseframe (link name)
+            "left_rubber_hand",  # tipframe  (link name)
             self.jointnames,     # expected active joint names
         )
         #self.elbowchain=KinematicChain(self,'world','elbow',self.jointnames[0:4])
         #self.wristchain=KinematicChain(self,'world','wrist',self.jointnames[0:5])
-                # ----------------------------------------------------------
-        # Ball marker: fixed in torso_link frame
-        # ----------------------------------------------------------
-        self.ball_radius = 0.01
-        diam = 2 * self.ball_radius
-
-        # Create the marker once, like in balldemo
-        self.ball_marker = Marker()
-        self.ball_marker.header.frame_id  = "torso_link"
-        self.ball_marker.header.stamp     = self.get_clock().now().to_msg()
-        self.ball_marker.action           = Marker.ADD
-        self.ball_marker.ns               = "ball"
-        self.ball_marker.id               = 1
-        self.ball_marker.type             = Marker.SPHERE
-
-        self.ball_marker.pose.orientation = Quaternion(x=0.0, y=0.0,
-                                                       z=0.0, w=1.0)
-        self.ball_marker.pose.position    = Point(x=0.5, y=0.5, z=0.5)
-
-        self.ball_marker.scale            = Vector3(x=diam, y=diam, z=diam)
-        self.ball_marker.color            = ColorRGBA(r=1.0, g=0.0,
-                                                      b=0.0, a=1.0)
-
-        # Put it in a MarkerArray
-        self.ball_array = MarkerArray(markers=[self.ball_marker])
-
-        # Publisher for the MarkerArray, latched (TRANSIENT_LOCAL) like balldemo
-        quality = QoSProfile(durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                             depth=1)
-        self.pub_ball = self.create_publisher(
-            MarkerArray, '/visualization_marker_array', quality)
 
 
+        
 
         #FIXME: WHAT DO YOU NEED TO DO TO INITIALIZE THE TRAJECTORY?
         # Define the matching initial joint/task positions.
@@ -102,11 +76,19 @@ class TrajectoryNode(Node):
         (p0,R0,Jv0, Jw0)=self.chain.fkin(self.q0)
         self.p0 = p0
         self.R0 = R0
+        self.q0dot=np.radians(np.zeros(len(self.jointnames)))
 
-        self.qg=np.array([-pi/2,pi/4,pi,pi/4,0.0])
+        self.qg=np.array([-pi/2,pi/4,pi/3,pi/4,pi/4, pi/2, pi/2])
         (pg,Rg,Jvg,Jwg)=self.chain.fkin(self.qg)
         self.pg=pg
         self.Rg=Rg
+        self.vg=np.array([0.05, 0.0, 0.0])
+        self.wg=np.array([0.0,0.0,0.0])
+        self.xdot=np.concatenate((self.vg,self.wg))
+        Jq=np.vstack((Jvg,Jwg))
+        self.qgdot=np.linalg.pinv(Jq)@self.xdot
+        #self.qgdot=np.linalg.pinv(Jvg)@self.vg
+        #self.qgdot=np.radians(np.zeros(len(self.jointnames)))
         
         ## set a period of 8 s. first 4 s: q0 to qg last 4s: qg to q0
         self.T=8.0
@@ -124,8 +106,6 @@ class TrajectoryNode(Node):
         # Create the publisher for the condition number.
         self.pubcond = self.create_publisher(Float64, '/condition', 10)
         self.tfbroad  = tf2_ros.TransformBroadcaster(self)
-        # Publisher for the visualization marker (the ball)
-        self.pubmarker = self.create_publisher(Marker, '/visualization_marker', 10)
 
         # Wait for a connection to happen.  This isn't necessary, but
         # means we don't start until the rest of the system is ready.
@@ -154,21 +134,15 @@ class TrajectoryNode(Node):
         self.t   = self.t   + self.dt
         self.now = self.now + rclpy.time.Duration(seconds=self.dt)
         # Stop everything after 8s - makes the graphing nicer.
-        if self.t > 40.0:
+        if self.t > 4.0:
             self.future.set_result("Trajectory has ended")
             return
         
-
         t = fmod(self.t, 8.0)
         if   (t < 4.0):
-            (s0,s0dot)=goto(t,4.0,0.0,1.0)
-            qd=self.q0+(self.qg-self.q0)*s0
-            qddot=(self.qg-self.q0)*s0dot
-            
+            qd,qddot=spline5(t,4.0,self.q0,self.qg,self.q0dot, self.qgdot, 0, 0)
         else:
-            (s0,s0dot)=goto(t-4.0,4.0,0.0,1.0)
-            qd=self.qg+(self.q0-self.qg)*s0
-            qddot=(self.q0-self.qg)*s0dot
+            qd, qddot=spline5(t-4.0,4.0, self.qg, self.q0, self.qgdot, self.q0dot, 0, 0)
         qc=qd
         qcdot=qddot
         # t= self.t % 8.0
@@ -230,7 +204,7 @@ class TrajectoryNode(Node):
         #  qc and qcdot = Joint Commands  as  /joint_states  to view/plot
         #  pd and Rd    = Task pos/orient as  /pose & TF     to view/plot
         #  vd and wd    = Task velocities as  /twist         to      plot
-        header=Header(stamp=self.now.to_msg(), frame_id='torso_link')
+        header=Header(stamp=self.now.to_msg(), frame_id='waist_yaw_link')
         self.pubjoint.publish(JointState(
             header=header,
             name=self.jointnames,
@@ -248,9 +222,6 @@ class TrajectoryNode(Node):
             transform=Transform_from_Rp(Rd,pd)))
         # Publish the condition number.
         #self.pubcond.publish(Float64(data=condition))
-        self.ball_marker.header.stamp = self.now.to_msg()
-        self.pub_ball.publish(self.ball_array)
-        
         
 
 

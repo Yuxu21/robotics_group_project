@@ -73,10 +73,10 @@ class TrajectoryNode(Node):
         
 
         # Goal joint pose and tip pose
-        # self.qg = np.array([-pi/2, pi/4, pi, pi/4, 0.0])
-        # (pg, Rg, Jvg, Jwg) = self.chain.fkin(self.qg)
-        # self.pg = pg
-        # self.Rg = Rg
+        self.qg = np.array([-pi/2, pi/4, pi, pi/4, 0.0])
+        (pg, Rg, Jvg, Jwg) = self.chain.fkin(self.qg)
+        self.pg = pg
+        self.Rg = Rg
 
         # Period T = 8 s (4s out, 4s back)
         self.T = 8.0
