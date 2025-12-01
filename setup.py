@@ -38,6 +38,9 @@ setup(
             'g1_test_v = project.g1_test_v:main',
             'g1_test_p= project.g1_test_p:main',
             'g1_ball_v = project.g1_ball_v:main',
+            'g1_ball_move = project.g1_ball_move:main',
+            'g1_ball_rel = project.g1_ball_rel:main',
+            'g1_paddle = project.g1_paddle:main',
         ],
     },
 )
