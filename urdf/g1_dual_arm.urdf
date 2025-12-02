@@ -402,6 +402,44 @@
       <material name="white"/>
     </visual>
   </link>
+
+  <link name="left_paddle">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <!-- ~0.18 kg is a typical paddle mass -->
+      <mass value="0.18"/>
+      <inertia
+        ixx="0.0008" ixy="0.0"   ixz="0.0"
+        iyy="0.0012" iyz="0.0"
+        izz="0.0006"/>
+    </inertial>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://g1_description/meshes/left_paddle.STL"/>
+      </geometry>
+      <material name="paddle_color">
+        <color rgba="0.8 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.28 0.02 0.16"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="left_hand_to_pingpong_paddle" type="fixed">
+    <parent link="left_rubber_hand"/>
+    <child link="left_paddle"/>
+    <!-- Adjust these numbers to seat the handle correctly -->
+    <origin xyz="0.10 0.00 0.00" rpy="0 0 1.57"/>
+  </joint>
+
+
   <link name="right_shoulder_pitch_link">
     <inertial>
       <origin xyz="0 -0.035892 -0.011628" rpy="0 0 0"/>
