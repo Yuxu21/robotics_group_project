@@ -41,6 +41,8 @@ setup(
             'g1_ball_move = project.g1_ball_move:main',
             'g1_ball_rel = project.g1_ball_rel:main',
             'g1_paddle = project.g1_paddle:main',
+            'g1_normal= project.g1_normal:main',
+            'g1_normal_e=project.g1_normal_e:main',
         ],
     },
 )
