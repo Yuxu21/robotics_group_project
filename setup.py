@@ -43,6 +43,8 @@ setup(
             'g1_paddle = project.g1_paddle:main',
             'g1_normal= project.g1_normal:main',
             'g1_normal_e=project.g1_normal_e:main',
+            'g1_normal_s=project.g1_normal_s:main',
+            'g1_normal_s_freeze=project.g1_normal_s_freeze:main',
         ],
     },
 )
